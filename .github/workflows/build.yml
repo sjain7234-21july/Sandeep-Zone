@@ -1,39 +1,169 @@
 name: Build Sandeep Zone APK
 
 on:
-  workflow_dispatch:
-  push:
-    branches:
-      - main
+workflow_dispatch:
+push:
+branches:
+- main
 
 permissions:
-  contents: read
+contents: read
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+build:
+runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+steps:
+  - name: Checkout code
+    uses: actions/checkout@v4
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
+  - name: Set up Java
+    uses: actions/setup-java@v4
+    with:
+      distribution: temurin
+      java-version: '17'
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+  - name: Set up Gradle
+    uses: gradle/actions/setup-gradle@v4
 
-      - name: Generate Android project
-        run: bash build.sh
+  - name: Create project files
+    shell: bash
+    run: |
+      mkdir -p app/src/main/java/com/sandeep/zone
 
-      - name: Build APK
-        run: gradle assembleDebug
+      cat > settings.gradle.kts <<'EOF'
+      pluginManagement {
+          repositories {
+              google()
+              mavenCentral()
+              gradlePluginPortal()
+          }
+      }
+      dependencyResolutionManagement {
+          repositories {
+              google()
+              mavenCentral()
+          }
+      }
+      rootProject.name = "SandeepZone"
+      include(":app")
+      EOF
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: SandeepZone-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+      cat > build.gradle.kts <<'EOF'
+      plugins {
+          id("com.android.application") version "8.7.3" apply false
+          id("org.jetbrains.kotlin.android") version "2.0.21" apply false
+      }
+      EOF
+
+      cat > app/build.gradle.kts <<'EOF'
+      plugins {
+          id("com.android.application")
+          id("org.jetbrains.kotlin.android")
+      }
+      android {
+          namespace = "com.sandeep.zone"
+          compileSdk = 35
+          defaultConfig {
+              applicationId = "com.sandeep.zone"
+              minSdk = 26
+              targetSdk = 35
+              versionCode = 1
+              versionName = "1.0"
+          }
+      }
+      EOF
+
+      cat > app/src/main/AndroidManifest.xml <<'EOF'
+      <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+          <application
+              android:label="Sandeep Zone"
+              android:theme="@android:style/Theme.Material.Light.NoActionBar">
+              <activity android:name=".MainActivity" android:exported="true">
+                  <intent-filter>
+                      <action android:name="android.intent.action.MAIN"/>
+                      <category android:name="android.intent.category.LAUNCHER"/>
+                  </intent-filter>
+              </activity>
+          </application>
+      </manifest>
+      EOF
+
+      cat > app/src/main/java/com/sandeep/zone/MainActivity.kt <<'EOF'
+      package com.sandeep.zone
+
+      import android.app.Activity
+      import android.os.Bundle
+      import android.speech.tts.TextToSpeech
+      import android.graphics.Color
+      import android.view.Gravity
+      import android.widget.Button
+      import android.widget.LinearLayout
+      import android.widget.TextView
+      import java.util.Locale
+
+      class MainActivity : Activity(), TextToSpeech.OnInitListener {
+          private var tts: TextToSpeech? = null
+          private var ready = false
+
+          override fun onCreate(savedInstanceState: Bundle?) {
+              super.onCreate(savedInstanceState)
+              tts = TextToSpeech(this, this)
+
+              val layout = LinearLayout(this).apply {
+                  orientation = LinearLayout.VERTICAL
+                  gravity = Gravity.CENTER
+                  setPadding(24, 24, 24, 24)
+                  setBackgroundColor(Color.rgb(12, 22, 48))
+              }
+
+              val title = TextView(this).apply {
+                  text = "Welcome to Sandeep Zone"
+                  textSize = 30f
+                  gravity = Gravity.CENTER
+                  setTextColor(Color.WHITE)
+              }
+
+              val button = Button(this).apply {
+                  text = "Test Greeting"
+                  setOnClickListener { greet() }
+              }
+
+              layout.addView(title)
+              layout.addView(button)
+              setContentView(layout)
+          }
+
+          override fun onInit(status: Int) {
+              if (status == TextToSpeech.SUCCESS) {
+                  val result = tts?.setLanguage(Locale.US)
+                  ready = result != TextToSpeech.LANG_MISSING_DATA &&
+                          result != TextToSpeech.LANG_NOT_SUPPORTED
+                  if (ready) greet()
+              }
+          }
+
+          private fun greet() {
+              if (ready) tts?.speak(
+                  "Welcome to Sandeep Zone",
+                  TextToSpeech.QUEUE_FLUSH,
+                  null,
+                  "welcome"
+              )
+          }
+
+          override fun onDestroy() {
+              tts?.shutdown()
+              super.onDestroy()
+          }
+      }
+      EOF
+
+  - name: Build APK
+    run: gradle assembleDebug
+
+  - name: Upload APK
+    uses: actions/upload-artifact@v4
+    with:
+      name: SandeepZone-APK
+      path: app/build/outputs/apk/debug/app-debug.apk
